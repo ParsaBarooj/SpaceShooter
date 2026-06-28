@@ -1,5 +1,4 @@
 ﻿using SpaceShooter.GameCore;
-using SpaceShooter.GameCore;
 using System;
 using System.Collections.Generic;
 using System.Drawing;

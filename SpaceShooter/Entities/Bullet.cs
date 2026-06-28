@@ -1,5 +1,4 @@
 ﻿using SpaceShooter.GameCore;
-using SpaceShooter.GameCore;
 using System.Drawing;
 
 namespace SpaceShooter.Entities
