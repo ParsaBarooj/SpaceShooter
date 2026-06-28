@@ -20,6 +20,8 @@ namespace SpaceShooter.GameCore
         public const int TotalWaves = 10;
         public const int TimerIntervalMs = 20;
 
+        public static float FrameScale(float deltaTime) => deltaTime / (TimerIntervalMs / 1000f);
+
         public static float EnemySpeedScale(int wave) => 1f + 0.1f * wave;
         public static int EnemyHPBonus(int wave) => 2 * wave;
     }
