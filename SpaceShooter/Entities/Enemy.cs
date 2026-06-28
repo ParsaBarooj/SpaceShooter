@@ -22,6 +22,8 @@ namespace SpaceShooter.Entities
 
         public abstract override void Update(float deltaTime);
 
+        public virtual List<Bullet> TryShoot() => new();
+
         public bool IsOffScreen()
         {
             return Y > GameSettings.ScreenHeight + Height;
