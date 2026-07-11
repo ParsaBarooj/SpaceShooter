@@ -59,7 +59,83 @@ namespace SpaceShooter.GameCore
             _waveManager = new WaveManager();
             _waveManager.BuildWave(1);
         }
+        public void Update(float deltaTime)
+        {
+            if (State == GameState.BetweenWaves)
+            {
+                _betweenWaveTimer -= (int)(deltaTime * 1000);
+                if (_betweenWaveTimer <= 0)
+                {
+                    int nextWave = Wave + 1;
+                    if (nextWave > GameSettings.TotalWaves)
+                    {
+                        State = GameState.Victory;
+                        return;
+                    }
 
+                    _waveManager.BuildWave(nextWave);
+                    State = GameState.Playing;
+                    OnMessage?.Invoke($"Wave {nextWave} begins!");
+                }
+
+                UpdateExplosions(deltaTime);
+                return;
+            }
+
+            if (State != GameState.Playing)
+                return;
+
+            Enemies.AddRange(_waveManager.Update((int)(deltaTime * 1000)));
+            Player.Update(deltaTime);
+
+            UpdateEnemies(deltaTime);
+            UpdateBullets(deltaTime);
+            UpdateEnemyCollisions();
+            UpdateCoins(deltaTime);
+            UpdatePowerUps(deltaTime);
+            UpdateExplosions(deltaTime);
+            CheckPlayerDeath();
+            CheckWaveCompletion();
+        }
+        private void UpdateBullets(float deltaTime)
+        {
+            for (int i = Bullets.Count - 1; i >= 0; i--)
+            {
+                Bullet bullet = Bullets[i];
+                bullet.Update(deltaTime);
+
+                if (bullet.IsOffScreen())
+                {
+                    Bullets.RemoveAt(i);
+                    continue;
+                }
+
+                if (bullet.IsPlayerBullet)
+                    ResolvePlayerBulletHit(i, bullet);
+                else
+                    ResolveEnemyBulletHit(i, bullet);
+            }
+        }
+        private void UpdateEnemies(float deltaTime)
+        {
+            for (int i = Enemies.Count - 1; i >= 0; i--)
+            {
+                Enemy enemy = Enemies[i];
+
+                if (enemy is EnemyTerrorist terrorist)
+                {
+                    terrorist.TrackPlayer(
+                        Player.X + Player.Width / 2f,
+                        Player.Y + Player.Height / 2f);
+                }
+
+                enemy.Update(deltaTime);
+                Bullets.AddRange(enemy.TryShoot());
+
+                if (enemy.IsOffScreen())
+                    Enemies.RemoveAt(i);
+            }
+        }
         private void ResolvePlayerBulletHit(int bulletIndex, Bullet bullet)
         {
             for (int enemyIndex = Enemies.Count - 1; enemyIndex >= 0; enemyIndex--)
@@ -222,6 +298,15 @@ namespace SpaceShooter.GameCore
             int goldChance = Math.Min(85, enemy.GoldCoinChance + (Wave - 1) * 3);
             int coinValue = _rng.Next(100) < goldChance ? 5 : 1;
             Coins.Add(new CoinDrop(dropX, enemy.Y, coinValue));
+        }
+        private void UpdateExplosions(float deltaTime)
+        {
+            for (int i = Explosions.Count - 1; i >= 0; i--)
+            {
+                Explosions[i].Update(deltaTime);
+                if (Explosions[i].Done)
+                    Explosions.RemoveAt(i);
+            }
         }
     }
     public class Explosion
