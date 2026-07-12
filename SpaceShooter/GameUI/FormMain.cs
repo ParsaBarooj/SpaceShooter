@@ -1,7 +1,4 @@
-﻿using SpaceShooter.Data;
-using SpaceShooter.Entities;
-using SpaceShooter.GameCore;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
@@ -9,358 +6,202 @@ using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using SpaceShooter.Data;
 using System.Windows.Forms;
+using SpaceShooter.Entities;
+using SpaceShooter.GameCore;
+
 
 namespace SpaceShooter.GameUI
 {
-    public class FormGame : Form
+    public class FormMain : Form
     {
-        private GameEngine _engine = null!;
-        private System.Windows.Forms.Timer? _gameTimer;
-        private readonly PlayerData _playerData;
-        private DateTime _lastTick;
+        private Label _titleLabel = null!;
+        private Button _btnPlay = null!, _btnShop = null!, _btnOptions = null!, _btnAbout = null!, _btnQuit = null!;
+        private Label _coinLabel = null!;
 
-        private bool _shooting;
-        private bool _paused;
-        private bool _escapeKeyHeld;
-        private string _backgroundTheme = "default";
+        private System.Windows.Forms.Timer _animTimer = new System.Windows.Forms.Timer { Interval = 60 };
+        private int[] _starY = new int[60];
+        private int[] _starX = new int[60];
+        private int[] _starS = new int[60];
+        private Random _rng = new Random();
 
-        private string _hudMessage = "";
-        private int _hudMessageTimer;
-
-        private readonly HashSet<Keys> _heldKeys = new();
-
-        private readonly int[] _starX = new int[80];
-        private readonly int[] _starY = new int[80];
-        private readonly Random _rng = new();
-
-        public FormGame(PlayerData data)
+        public FormMain()
         {
-            _playerData = data;
-
-            Text = "Space Shooter — Playing";
+            Text = "Space Shooter";
             ClientSize = new Size(GameSettings.ScreenWidth, GameSettings.ScreenHeight);
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
-            BackColor = Color.FromArgb(5, 5, 18);
+            BackColor = Color.FromArgb(8, 8, 24);
             StartPosition = FormStartPosition.CenterScreen;
             DoubleBuffered = true;
-            KeyPreview = true;
 
-            InitStars();
-            StartNewGame();
-        }
-
-        protected override void OnShown(EventArgs e)
-        {
-            base.OnShown(e);
-            Focus();
-        }
-
-        private void StartNewGame()
-        {
-            if (_gameTimer is not null)
-            {
-                _gameTimer.Stop();
-                _gameTimer.Tick -= GameTick;
-                _gameTimer.Dispose();
-            }
-
-            _heldKeys.Clear();
-            _shooting = false;
-            _paused = false;
-            _escapeKeyHeld = false;
-
-            _engine = new GameEngine();
-            ApplyCosmetics();
-            SubscribeToEngineEvents();
-
-            bool usedLifePack = ConsumeExtraLifePackForRun();
-            ShowHudMessage(usedLifePack
-                ? "Extra Life Pack activated! Wave 1 — Good luck!"
-                : "Wave 1 — Good luck!");
-
-            _gameTimer = new System.Windows.Forms.Timer { Interval = GameSettings.TimerIntervalMs };
-            _gameTimer.Tick += GameTick;
-            _lastTick = DateTime.Now;
-            _gameTimer.Start();
-
+            Data.Database.Init();
+            AudioManager.Initialize();
             AudioManager.StartBackgroundMusic();
+            BuildUI();
+            InitStars();
+
+            _animTimer.Tick += (s, e) => { MoveStars(); Invalidate(); };
+            _animTimer.Start();
         }
 
-        private void ApplyCosmetics()
+        private void BuildUI()
         {
-            _backgroundTheme = _playerData.EquippedBg;
-            _engine.Player.ApplySkin(_playerData.EquippedSkin);
-            _engine.Player.ApplyBulletStyle(_playerData.EquippedBullet);
-        }
-
-        private void SubscribeToEngineEvents()
-        {
-            _engine.OnMessage += ShowHudMessage;
-            _engine.OnEnemyDestroyed += () => AudioManager.Play(SoundEffect.Explosion);
-            _engine.OnCoinCollected += () => AudioManager.Play(SoundEffect.Coin);
-            _engine.OnPowerUpCollected += () => AudioManager.Play(SoundEffect.PowerUp);
-            _engine.OnPlayerDamaged += () => AudioManager.Play(SoundEffect.PlayerHit);
-        }
-
-        private bool ConsumeExtraLifePackForRun()
-        {
-            if (_playerData.ExtraLifePacks <= 0)
-                return false;
-
-            _playerData.ExtraLifePacks--;
-            _engine.Player.Lives++;
-            Database.Save(_playerData);
-            AudioManager.Play(SoundEffect.PowerUp);
-            return true;
-        }
-
-        private void GameTick(object? sender, EventArgs e)
-        {
-            if (_paused)
+            _titleLabel = new Label
             {
-                _lastTick = DateTime.Now;
-                return;
-            }
+                Text = "★  SPACE SHOOTER  ★",
+                Font = new Font("Courier New", 22, FontStyle.Bold),
+                ForeColor = Color.Cyan,
+                BackColor = Color.Transparent,
+                AutoSize = false,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Size = new Size(580, 60),
+                Location = new Point(10, 80)
+            };
 
-            DateTime now = DateTime.Now;
-            float deltaTime = (float)(now - _lastTick).TotalSeconds;
-            if (deltaTime > 0.1f)
-                deltaTime = 0.1f;
-            _lastTick = now;
-
-            Player player = _engine.Player;
-            player.MovingLeft = _heldKeys.Contains(Keys.Left) || _heldKeys.Contains(Keys.A);
-            player.MovingRight = _heldKeys.Contains(Keys.Right) || _heldKeys.Contains(Keys.D);
-            player.MovingUp = _heldKeys.Contains(Keys.Up) || _heldKeys.Contains(Keys.W);
-            player.MovingDown = _heldKeys.Contains(Keys.Down) || _heldKeys.Contains(Keys.S);
-
-            if (_shooting)
+            _coinLabel = new Label
             {
-                List<Bullet> bullets = player.TryShoot();
-                if (bullets.Count > 0)
-                {
-                    _engine.Bullets.AddRange(bullets);
-                    AudioManager.Play(SoundEffect.Shot);
-                }
-            }
+                Text = $"Coins: {Database.Load().TotalCoins}  |  Best: {Database.Load().HighScore}",
+                Font = new Font("Courier New", 10),
+                ForeColor = Color.Gold,
+                BackColor = Color.Transparent,
+                AutoSize = false,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Size = new Size(580, 25),
+                Location = new Point(10, 148)
+            };
 
-            _engine.Update(deltaTime);
+            int bw = 220, bx = (ClientSize.Width - bw) / 2;
+            int startY = 230;
+            int gap = 64;
 
-            if (_hudMessageTimer > 0)
-                _hudMessageTimer -= GameSettings.TimerIntervalMs;
+            _btnPlay = MakeButton("▶  Play", bx, startY, Color.FromArgb(0, 160, 80));
+            _btnShop = MakeButton("🛒  Shop", bx, startY + gap, Color.FromArgb(160, 100, 0));
+            _btnOptions = MakeButton("⚙  Options", bx, startY + gap * 2, Color.FromArgb(40, 80, 160));
+            _btnAbout = MakeButton("ℹ  About", bx, startY + gap * 3, Color.FromArgb(80, 40, 120));
+            _btnQuit = MakeButton("✕  Quit", bx, startY + gap * 4, Color.FromArgb(140, 30, 30));
 
-            if (_engine.State is GameState.GameOver or GameState.Victory)
+            _btnPlay.Click += (s, e) => OpenGame();
+            _btnShop.Click += (s, e) => OpenShop();
+            _btnOptions.Click += (s, e) => OpenOptions();
+            _btnAbout.Click += (s, e) => OpenAbout();
+            _btnQuit.Click += (s, e) => Application.Exit();
+
+            Controls.Add(_titleLabel);
+            Controls.Add(_coinLabel);
+            Controls.Add(_btnPlay);
+            Controls.Add(_btnShop);
+            Controls.Add(_btnOptions);
+            Controls.Add(_btnAbout);
+            Controls.Add(_btnQuit);
+        }
+
+        private Button MakeButton(string text, int x, int y, Color bg)
+        {
+            var btn = new Button
             {
-                _gameTimer?.Stop();
-                SaveProgress();
-                ShowResult();
-                return;
-            }
-
-            Invalidate();
+                Text = text,
+                Font = new Font("Courier New", 13, FontStyle.Bold),
+                ForeColor = Color.White,
+                BackColor = bg,
+                FlatStyle = FlatStyle.Flat,
+                Size = new Size(220, 48),
+                Location = new Point(x, y),
+                Cursor = Cursors.Hand
+            };
+            btn.FlatAppearance.BorderSize = 0;
+            return btn;
         }
 
-        private void SaveProgress()
+        private void OpenGame()
         {
-            _playerData.TotalCoins += _engine.Player.Coins;
-            if (_engine.Player.Score > _playerData.HighScore)
-                _playerData.HighScore = _engine.Player.Score;
+            _animTimer.Stop();
 
-            Database.Save(_playerData);
-        }
-
-        private void ShowResult()
-        {
-            string title = _engine.State == GameState.Victory ? "You Win!" : "Game Over";
-            string message = $"{title}\n\nScore: {_engine.Player.Score}\nCoins collected: {_engine.Player.Coins}\n\nPlay again?";
-            DialogResult result = MessageBox.Show(message, title, MessageBoxButtons.YesNo, MessageBoxIcon.Information);
-
-            if (result == DialogResult.Yes)
-                StartNewGame();
-            else
-                Close();
-        }
-
-        private void ShowHudMessage(string message)
-        {
-            _hudMessage = message;
-            _hudMessageTimer = 2500;
-        }
-
-        protected override void OnKeyDown(KeyEventArgs e)
-        {
-            base.OnKeyDown(e);
-            _heldKeys.Add(e.KeyCode);
-
-            if (e.KeyCode == Keys.Space)
+            var data = Database.Load();
+            var game = new FormGame(data);
+            game.FormClosed += (s, e) =>
             {
-                _shooting = true;
-                e.SuppressKeyPress = true;
-            }
+                // Refresh the menu state after the game writes its progress.
+                var fresh = Database.Load();
+                _coinLabel.Text = $"Coins: {fresh.TotalCoins}  |  Best: {fresh.HighScore}";
+                Show();
+                _animTimer.Start();
+            };
 
-            if (e.KeyCode == Keys.Escape && !_escapeKeyHeld)
+            Hide();
+            game.Show();
+        }
+
+        private void OpenShop()
+        {
+            _animTimer.Stop();
+
+            var data = Database.Load();
+            var shop = new FormShop(data);
+            shop.FormClosed += (s, e) =>
             {
-                _escapeKeyHeld = true;
-                TogglePause();
-                e.SuppressKeyPress = true;
+                var fresh = Database.Load();
+                _coinLabel.Text = $"Coins: {fresh.TotalCoins}  |  Best: {fresh.HighScore}";
+                Show();
+                _animTimer.Start();
+            };
+
+            Hide();
+            shop.Show();
+        }
+
+        private void OpenOptions()
+        {
+            var opt = new FormOptions();
+            opt.ShowDialog(this);
+        }
+
+        private void OpenAbout()
+        {
+            var about = new FormAbout();
+            about.ShowDialog(this);
+        }
+
+        // --- star background ---
+        private void InitStars()
+        {
+            for (int i = 0; i < _starY.Length; i++)
+            {
+                _starX[i] = _rng.Next(Width);
+                _starY[i] = _rng.Next(Height);
+                _starS[i] = _rng.Next(1, 4);
             }
         }
 
-        protected override void OnKeyUp(KeyEventArgs e)
+        private void MoveStars()
         {
-            base.OnKeyUp(e);
-            _heldKeys.Remove(e.KeyCode);
-
-            if (e.KeyCode == Keys.Space)
-                _shooting = false;
-            if (e.KeyCode == Keys.Escape)
-                _escapeKeyHeld = false;
-        }
-
-        private void TogglePause()
-        {
-            _paused = !_paused;
-            Text = _paused ? "Space Shooter — PAUSED" : "Space Shooter — Playing";
-            _lastTick = DateTime.Now;
-            Invalidate();
+            for (int i = 0; i < _starY.Length; i++)
+            {
+                _starY[i] += _starS[i];
+                if (_starY[i] > Height) { _starY[i] = 0; _starX[i] = _rng.Next(Width); }
+            }
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
-            Graphics graphics = e.Graphics;
-            graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-
-            DrawBackground(graphics);
-
-            if (_engine is null)
-                return;
-
-            foreach (Bullet bullet in _engine.Bullets)
-                bullet.Draw(graphics);
-            foreach (CoinDrop coin in _engine.Coins)
-                coin.Draw(graphics);
-            foreach (PowerUpDrop powerUp in _engine.PowerUps)
-                powerUp.Draw(graphics);
-            foreach (Enemy enemy in _engine.Enemies)
-                enemy.Draw(graphics);
-            foreach (Explosion explosion in _engine.Explosions)
-                explosion.Draw(graphics);
-
-            _engine.Player.Draw(graphics);
-            DrawHud(graphics);
-
-            if (_paused)
-                DrawCenteredText(graphics, "— PAUSED —\nPress Esc to resume", Color.White, 18);
-
-            if (_hudMessageTimer > 0 && !string.IsNullOrWhiteSpace(_hudMessage))
-                DrawCenteredText(graphics, _hudMessage, Color.Yellow, 16);
-        }
-
-        private void DrawHud(Graphics graphics)
-        {
-            Player player = _engine.Player;
-            using var hudFont = new Font("Courier New", 11, FontStyle.Bold);
-            using var smallFont = new Font("Courier New", 9);
-            using var topBar = new SolidBrush(Color.FromArgb(120, 0, 0, 0));
-
-            graphics.FillRectangle(topBar, 0, 0, GameSettings.ScreenWidth, 50);
-            graphics.DrawString($"Score: {player.Score}", hudFont, Brushes.White, 8, 6);
-            graphics.DrawString($"Coins: {player.Coins}", hudFont, Brushes.Gold, 8, 26);
-            graphics.DrawString($"Wave: {_engine.Wave}/{GameSettings.TotalWaves}", hudFont, Brushes.Cyan,
-                GameSettings.ScreenWidth / 2 - 60, 14);
-
-            int barWidth = 150;
-            int barHeight = 14;
-            int barX = GameSettings.ScreenWidth - barWidth - 10;
-            int barY = 10;
-            float hpRatio = (float)player.HP / player.MaxHP;
-            Color hpColor = hpRatio > 0.5f ? Color.LimeGreen : hpRatio > 0.25f ? Color.Orange : Color.Red;
-
-            graphics.FillRectangle(Brushes.DimGray, barX, barY, barWidth, barHeight);
-            using var hpBrush = new SolidBrush(hpColor);
-            graphics.FillRectangle(hpBrush, barX, barY, (int)(barWidth * hpRatio), barHeight);
-            graphics.DrawString("HP", smallFont, Brushes.White, barX - 22, barY);
-
-            for (int i = 0; i < player.Lives; i++)
+            var g = e.Graphics;
+            foreach (int i in Range(_starY.Length))
             {
-                using var lifeBrush = new SolidBrush(Color.Red);
-                graphics.FillEllipse(lifeBrush, barX + i * 18, barY + 18, 12, 12);
-            }
-
-            int powerUpY = 55;
-            if (player.HasShield)
-            {
-                graphics.DrawString($"[SHIELD {player.ShieldTimeLeft / 1000f:0.0}s]", smallFont, Brushes.Cyan, 8, powerUpY);
-                powerUpY += 15;
-            }
-
-            if (player.TripleShot)
-            {
-                graphics.DrawString($"[TRIPLE {player.TripleShotTimeLeft / 1000f:0.0}s]", smallFont, Brushes.DeepSkyBlue, 8, powerUpY);
-                powerUpY += 15;
-            }
-
-            if (player.FireBoostTimeLeft > 0)
-                graphics.DrawString($"[FAST FIRE {player.FireBoostTimeLeft / 1000f:0.0}s]", smallFont, Brushes.Orange, 8, powerUpY);
-        }
-
-        private void DrawCenteredText(Graphics graphics, string text, Color color, int size)
-        {
-            using var font = new Font("Courier New", size, FontStyle.Bold);
-            SizeF measured = graphics.MeasureString(text, font);
-            float x = (GameSettings.ScreenWidth - measured.Width) / 2f;
-            float y = (GameSettings.ScreenHeight - measured.Height) / 2f;
-            using var background = new SolidBrush(Color.FromArgb(160, 0, 0, 0));
-            using var brush = new SolidBrush(color);
-
-            graphics.FillRectangle(background, x - 10, y - 8, measured.Width + 20, measured.Height + 16);
-            graphics.DrawString(text, font, brush, x, y);
-        }
-
-        private void InitStars()
-        {
-            for (int i = 0; i < _starX.Length; i++)
-            {
-                _starX[i] = _rng.Next(GameSettings.ScreenWidth);
-                _starY[i] = _rng.Next(GameSettings.ScreenHeight);
-            }
-        }
-
-        private void DrawBackground(Graphics graphics)
-        {
-            if (_backgroundTheme == "bg_galaxy")
-            {
-                graphics.Clear(Color.FromArgb(8, 4, 28));
-                using var purpleNebula = new SolidBrush(Color.FromArgb(45, 145, 70, 220));
-                using var blueNebula = new SolidBrush(Color.FromArgb(40, 35, 145, 255));
-                graphics.FillEllipse(purpleNebula, -150, 120, 420, 280);
-                graphics.FillEllipse(blueNebula, 290, 360, 360, 250);
-            }
-            else
-            {
-                graphics.Clear(Color.FromArgb(5, 5, 18));
-            }
-
-            for (int i = 0; i < _starX.Length; i++)
-            {
-                int alpha = 80 + (i % 3) * 60;
+                int alpha = Math.Min(255, 80 + _starS[i] * 50);
                 using var brush = new SolidBrush(Color.FromArgb(alpha, Color.White));
-                graphics.FillEllipse(brush, _starX[i], _starY[i], 2, 2);
+                g.FillEllipse(brush, _starX[i], _starY[i], _starS[i], _starS[i]);
             }
         }
+
+        private static System.Collections.Generic.IEnumerable<int> Range(int n)
+        { for (int i = 0; i < n; i++) yield return i; }
 
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
-            if (_gameTimer is not null)
-            {
-                _gameTimer.Stop();
-                _gameTimer.Tick -= GameTick;
-                _gameTimer.Dispose();
-            }
-
+            _animTimer.Stop();
+            AudioManager.Shutdown();
             base.OnFormClosed(e);
         }
     }
