@@ -39,8 +39,8 @@ namespace SpaceShooter.GameUI
 
             string info =
                 "Game Title  :  Space Shooter\n\n" +
-                "Developer   :  Milad Zarei Maleki\n" +
-                "Student ID  :  [replace before submission]\n\n" +
+                "Developer   :  Parsa Barooj - Roham Hadadi\n" +
+                "Student ID  :  404521102 - 404521255\n\n" +
                 "Course      :  Advanced Programming\n" +
                 "Instructor  :  Dr. Marzieh Maleki Majd\n" +
                 "University  :  Iran University of\n" +
